@@ -11,6 +11,7 @@ capture to minimize memory usage.
 import json
 import logging
 import math
+import subprocess
 import urllib.parse
 from datetime import datetime
 from io import BytesIO
@@ -219,7 +220,79 @@ class ReolinkCamPlugin(BasePlugin):
         if img:
             return img
 
+        # --- Method 2b: Re-login and try with fresh token (token may have expired) ---
+        logger.info("Camera %s: attempting fresh login + immediate snap", ip)
+        token2 = self._login_token(ip, username, password)
+        if token2:
+            snap_url = f"{base_url}?cmd=Snap&channel={channel}&token={token2}"
+            img = self._fetch_snapshot(ip, snap_url)
+            if img:
+                return img
+
+        # --- Method 3: RTSP snapshot via ffmpeg (most reliable fallback) ---
+        logger.info("Camera %s: attempting RTSP snapshot via ffmpeg", ip)
+        img = self._capture_rtsp_snapshot(ip, username, password, channel)
+        if img:
+            return img
+
         logger.warning("Camera %s: all authentication methods failed", ip)
+        return None
+
+    def _capture_rtsp_snapshot(self, ip, username, password, channel):
+        """
+        Capture a snapshot via RTSP using ffmpeg.
+
+        This is the most reliable method as it bypasses the HTTP API entirely.
+        Uses the sub-stream for faster capture and lower bandwidth.
+
+        Returns:
+            PIL.Image or None
+        """
+        encoded_pass = urllib.parse.quote(password, safe="")
+        encoded_user = urllib.parse.quote(username, safe="")
+        # Try sub-stream first (faster), then main stream
+        for stream in ["sub", "main"]:
+            rtsp_url = (
+                f"rtsp://{encoded_user}:{encoded_pass}@{ip}:554"
+                f"//h264Preview_{channel + 1:02d}_{stream}"
+            )
+            try:
+                result = subprocess.run(
+                    [
+                        "ffmpeg", "-y",
+                        "-rtsp_transport", "tcp",
+                        "-i", rtsp_url,
+                        "-frames:v", "1",
+                        "-f", "image2pipe",
+                        "-vcodec", "mjpeg",
+                        "-q:v", "2",
+                        "pipe:1",
+                    ],
+                    capture_output=True,
+                    timeout=10,
+                )
+                if result.returncode == 0 and len(result.stdout) > 1000:
+                    img = Image.open(BytesIO(result.stdout))
+                    img = self._constrain_size(img, MAX_SNAPSHOT_DIM)
+                    img.load()
+                    logger.info(
+                        "Camera %s: RTSP snapshot captured (%s stream, %dx%d)",
+                        ip, stream, img.width, img.height,
+                    )
+                    return img
+                else:
+                    logger.debug(
+                        "Camera %s: ffmpeg %s stream failed (rc=%d, %d bytes)",
+                        ip, stream, result.returncode, len(result.stdout),
+                    )
+            except subprocess.TimeoutExpired:
+                logger.debug("Camera %s: ffmpeg %s stream timed out", ip, stream)
+            except FileNotFoundError:
+                logger.warning("Camera %s: ffmpeg not installed, skipping RTSP fallback", ip)
+                return None
+            except Exception as e:
+                logger.debug("Camera %s: RTSP %s error: %s", ip, stream, e)
+
         return None
 
     def _fetch_snapshot(self, ip, url):

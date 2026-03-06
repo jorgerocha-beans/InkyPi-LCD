@@ -42,8 +42,8 @@
         "active_playlist": null
     },
     "refresh_info": {
-        "refresh_time": "2026-03-06T22:38:24.078252+00:00",
-        "image_hash": "8587b77c8006382c94468f5d677fed062e79b3a81d7e9dc858e07aecd3b6bfff",
+        "refresh_time": "2026-03-06T22:49:03.532379+00:00",
+        "image_hash": "ea9c2c3909dd7663fcd3cbbe5776afc567f3006361e42a7cbdcbe62e12035d97",
         "refresh_type": "Manual Update",
         "plugin_id": "reolink_cam"
     }
