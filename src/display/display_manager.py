@@ -18,6 +18,11 @@ try:
 except ImportError:
     logger.info("Waveshare display not available, hardware support disabled")
 
+try:
+    from display.lcd_display import LCDDisplay
+except ImportError:
+    logger.info("LCD display not available")
+
 class DisplayManager:
 
     """Manages the display and rendering of images."""
@@ -41,6 +46,8 @@ class DisplayManager:
 
         if display_type == "mock":
             self.display = MockDisplay(device_config)
+        elif display_type == "lcd":
+            self.display = LCDDisplay(device_config)
         elif display_type == "inky":
             self.display = InkyDisplay(device_config)
         elif fnmatch.fnmatch(display_type, "epd*in*"):  

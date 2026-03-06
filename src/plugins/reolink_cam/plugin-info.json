@@ -1,0 +1,71 @@
+{
+    "display_name": "Reolink Camera",
+    "id": "reolink_cam",
+    "class": "ReolinkCamPlugin",
+    "description": "Display snapshots from Reolink IP cameras in single or grid layout with timestamp and camera name overlays.",
+    "settings": {
+        "cameras": {
+            "type": "list",
+            "label": "Camera Configurations",
+            "description": "List of Reolink camera connection details",
+            "items": {
+                "ip": {
+                    "type": "text",
+                    "label": "Camera IP",
+                    "description": "IP address of the Reolink camera",
+                    "required": true
+                },
+                "username": {
+                    "type": "text",
+                    "label": "Username",
+                    "default": "admin"
+                },
+                "password": {
+                    "type": "password",
+                    "label": "Password",
+                    "required": true
+                },
+                "name": {
+                    "type": "text",
+                    "label": "Camera Name",
+                    "description": "Display name for the camera",
+                    "default": "Camera"
+                },
+                "channel": {
+                    "type": "number",
+                    "label": "Channel",
+                    "default": 0,
+                    "description": "Camera channel (0 for single-lens cameras)"
+                }
+            }
+        },
+        "layout": {
+            "type": "select",
+            "label": "Layout",
+            "options": ["single", "grid_2x1", "grid_2x2", "grid_1x2"],
+            "default": "single",
+            "description": "How to arrange camera snapshots on the display"
+        },
+        "show_timestamp": {
+            "type": "checkbox",
+            "label": "Show Timestamp",
+            "default": true
+        },
+        "show_camera_name": {
+            "type": "checkbox",
+            "label": "Show Camera Name",
+            "default": true
+        },
+        "overlay_position": {
+            "type": "select",
+            "label": "Overlay Position",
+            "options": ["top-left", "top-right", "bottom-left", "bottom-right"],
+            "default": "bottom-left"
+        },
+        "background_color": {
+            "type": "text",
+            "label": "Background Color",
+            "default": "#000000"
+        }
+    }
+}

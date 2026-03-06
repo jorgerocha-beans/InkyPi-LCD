@@ -1,0 +1,122 @@
+<div class="form-group">
+    <label class="form-label">Cameras:</label>
+    <div id="cameraList"></div>
+    <button type="button" id="addCamera" class="action-button compact" onclick="addCameraRow()">+ Add Camera</button>
+</div>
+
+<div class="form-group">
+    <label for="layout" class="form-label">Layout:</label>
+    <select id="layout" name="layout" class="form-input">
+        <option value="single">Single Camera</option>
+        <option value="grid_2x1">2 Cameras Side by Side</option>
+        <option value="grid_1x2">2 Cameras Stacked</option>
+        <option value="grid_2x2">4 Camera Grid</option>
+    </select>
+</div>
+
+<div class="form-group">
+    <label class="form-label">Overlays:</label>
+    <div class="form-group">
+        <input type="checkbox" id="show_timestamp" name="show_timestamp" onclick="this.value=this.checked ? 'true' : 'false';">
+        <span>Show Timestamp</span>
+    </div>
+    <div class="form-group">
+        <input type="checkbox" id="show_camera_name" name="show_camera_name" onclick="this.value=this.checked ? 'true' : 'false';">
+        <span>Show Camera Name</span>
+    </div>
+</div>
+
+<div class="form-group">
+    <label for="overlay_position" class="form-label">Overlay Position:</label>
+    <select id="overlay_position" name="overlay_position" class="form-input">
+        <option value="bottom-left">Bottom Left</option>
+        <option value="bottom-right">Bottom Right</option>
+        <option value="top-left">Top Left</option>
+        <option value="top-right">Top Right</option>
+    </select>
+</div>
+
+<div class="form-group">
+    <label for="background_color" class="form-label">Background Color:</label>
+    <input type="color" id="background_color" name="background_color" class="form-input" value="#000000">
+</div>
+
+<!-- Hidden field to store camera JSON -->
+<input type="hidden" id="cameras" name="cameras" value="[]">
+
+<script>
+    let cameraIndex = 0;
+
+    function addCameraRow(cam = {}) {
+        const list = document.getElementById('cameraList');
+        const idx = cameraIndex++;
+        const div = document.createElement('div');
+        div.className = 'form-group camera-row';
+        div.id = `cam-${idx}`;
+        div.innerHTML = `
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <input type="text" placeholder="Camera Name" class="form-input cam-name" value="${cam.name || 'Camera ' + (idx + 1)}" style="width: 120px;">
+                <input type="text" placeholder="IP Address" class="form-input cam-ip" value="${cam.ip || ''}" style="width: 140px;">
+                <input type="text" placeholder="Username" class="form-input cam-user" value="${cam.username || 'admin'}" style="width: 100px;">
+                <input type="password" placeholder="Password" class="form-input cam-pass" value="${cam.password || ''}" style="width: 100px;">
+                <input type="number" placeholder="Ch" class="form-input cam-channel" value="${cam.channel || 0}" style="width: 60px;" min="0">
+                <button type="button" class="action-button compact" onclick="removeCameraRow(${idx})" style="background: #dc3545;">✕</button>
+            </div>
+        `;
+        list.appendChild(div);
+        updateCamerasField();
+    }
+
+    function removeCameraRow(idx) {
+        const row = document.getElementById(`cam-${idx}`);
+        if (row) row.remove();
+        updateCamerasField();
+    }
+
+    function updateCamerasField() {
+        const rows = document.querySelectorAll('.camera-row');
+        const cameras = [];
+        rows.forEach(row => {
+            cameras.push({
+                name: row.querySelector('.cam-name').value,
+                ip: row.querySelector('.cam-ip').value,
+                username: row.querySelector('.cam-user').value,
+                password: row.querySelector('.cam-pass').value,
+                channel: parseInt(row.querySelector('.cam-channel').value) || 0
+            });
+        });
+        document.getElementById('cameras').value = JSON.stringify(cameras);
+    }
+
+    // Update hidden field on any input change
+    document.getElementById('cameraList').addEventListener('input', updateCamerasField);
+
+    document.addEventListener('DOMContentLoaded', () => {
+        if (loadPluginSettings) {
+            document.getElementById('layout').value = pluginSettings.layout || 'single';
+            document.getElementById('overlay_position').value = pluginSettings.overlay_position || 'bottom-left';
+            document.getElementById('background_color').value = pluginSettings.background_color || '#000000';
+
+            document.getElementById('show_timestamp').checked = pluginSettings.show_timestamp !== false;
+            document.getElementById('show_timestamp').value = pluginSettings.show_timestamp !== false;
+            document.getElementById('show_camera_name').checked = pluginSettings.show_camera_name !== false;
+            document.getElementById('show_camera_name').value = pluginSettings.show_camera_name !== false;
+
+            const cameras = pluginSettings.cameras || [];
+            if (typeof cameras === 'string') {
+                try { cameras = JSON.parse(cameras); } catch(e) { cameras = []; }
+            }
+            cameras.forEach(cam => addCameraRow(cam));
+
+            if (cameras.length === 0) {
+                addCameraRow();
+            }
+        } else {
+            document.getElementById('show_timestamp').checked = true;
+            document.getElementById('show_timestamp').value = "true";
+            document.getElementById('show_camera_name').checked = true;
+            document.getElementById('show_camera_name').value = "true";
+            addCameraRow();
+        }
+    });
+</script>

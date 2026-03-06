@@ -5,12 +5,15 @@
 # Description: This script automates the installation of InkyPI and creation of
 #              the InkyPI service.
 #
-# Usage: ./install.sh [-W <waveshare_device>]
+# Usage: ./install.sh [-W <waveshare_device>] [-L]
 #        -W <waveshare_device> (optional) Install for a Waveshare device,
 #                               specifying the device model type, e.g. epd7in3e.
 #
 #                               If not specified then the Pimoroni Inky display
 #                               is assumed.
+#
+#        -L (optional) Install for HDMI LCD display (800x480).
+#                      Configures framebuffer output instead of e-ink.
 # =============================================================================
 
 # Formatting stuff
@@ -48,12 +51,18 @@ PIP_REQUIREMENTS_FILE="$SCRIPT_DIR/requirements.txt"
 WS_TYPE=""
 WS_REQUIREMENTS_FILE="$SCRIPT_DIR/ws-requirements.txt"
 
-# Parse the arguments, looking for the -W option.
+# LCD display support flag
+LCD_MODE=""
+
+# Parse the arguments, looking for the -W and -L options.
 parse_arguments() {
-    while getopts ":W:" opt; do
+    while getopts ":W:L" opt; do
         case $opt in
             W) WS_TYPE=$OPTARG
                 echo "Optional parameter WS is set for Waveshare support.  Screen type is: $WS_TYPE"
+                ;;
+            L) LCD_MODE="true"
+                echo "LCD mode enabled — configuring for HDMI LCD display (800x480)"
                 ;;
             \?) echo "Invalid option: -$OPTARG." >&2
                 exit 1
@@ -102,6 +111,62 @@ fetch_waveshare_driver() {
     echo_error "ERROR: Failed to download Waveshare epdconfig file."
     exit 1
   fi
+}
+
+configure_lcd_display() {
+  echo "Configuring HDMI LCD display (800x480)"
+  local CONFIG_TXT="/boot/firmware/config.txt"
+
+  # Add HDMI LCD configuration if not already present
+  if ! grep -q "hdmi_cvt 800 480" "$CONFIG_TXT"; then
+    cat >> "$CONFIG_TXT" << 'EOF'
+
+# --- InkyPi LCD Display Configuration ---
+hdmi_group=2
+hdmi_mode=87
+hdmi_cvt 800 480 60 6 0 0 0
+hdmi_force_hotplug=1
+# --- End InkyPi LCD Configuration ---
+EOF
+    echo_success "\tHDMI LCD configuration added to $CONFIG_TXT"
+  else
+    echo_success "\tHDMI LCD configuration already present in $CONFIG_TXT"
+  fi
+
+  # Disable console blanking
+  if ! grep -q "consoleblank=0" /boot/firmware/cmdline.txt; then
+    sed -i 's/$/ consoleblank=0/' /boot/firmware/cmdline.txt
+    echo_success "\tConsole blanking disabled"
+  fi
+
+  # Hide cursor and disable screensaver
+  mkdir -p /etc/X11/xorg.conf.d/
+  cat > /etc/lightdm/lightdm.conf.d/01-inkypi-lcd.conf 2>/dev/null << 'EOF' || true
+[Seat:*]
+xserver-command=X -nocursor
+EOF
+
+  # Disable screen blanking via systemd
+  cat > /etc/systemd/system/disable-blanking.service << 'EOF'
+[Unit]
+Description=Disable console blanking for InkyPi LCD
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo 0 > /sys/module/kernel/parameters/consoleblank; setterm --blank 0 --powerdown 0 2>/dev/null || true'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload
+  systemctl enable disable-blanking.service
+  echo_success "\tScreen blanking and cursor hiding configured"
+
+  # Install fbi as fallback display tool
+  apt-get install -y fbi > /dev/null 2>&1
+  echo_success "\tfbi framebuffer tool installed"
 }
 
 enable_interfaces(){
@@ -257,24 +322,45 @@ install_config() {
 # Update the device.json file with the supplied Waveshare parameter (if set).
 #
 update_config() {
-  if [[ -n "$WS_TYPE" ]]; then
-      local DEVICE_JSON="$CONFIG_DIR/device.json"
+  local DEVICE_JSON="$CONFIG_DIR/device.json"
+  local DISPLAY_TYPE=""
 
+  if [[ -n "$LCD_MODE" ]]; then
+      DISPLAY_TYPE="lcd"
+  elif [[ -n "$WS_TYPE" ]]; then
+      DISPLAY_TYPE="$WS_TYPE"
+  fi
+
+  if [[ -n "$DISPLAY_TYPE" ]]; then
       if grep -q '"display_type":' "$DEVICE_JSON"; then
           # Update existing display_type value
-          sed -i "s/\"display_type\": \".*\"/\"display_type\": \"$WS_TYPE\"/" "$DEVICE_JSON"
-          echo "Updated display_type to: $WS_TYPE" 
+          sed -i "s/\"display_type\": \".*\"/\"display_type\": \"$DISPLAY_TYPE\"/" "$DEVICE_JSON"
+          echo "Updated display_type to: $DISPLAY_TYPE" 
       else
           # Append display_type safely, ensuring proper comma placement
           if grep -q '}$' "$DEVICE_JSON"; then
               sed -i '$s/}/,/' "$DEVICE_JSON"  # Replace last } with a comma
           fi
-          echo "  \"display_type\": \"$WS_TYPE\"" >> "$DEVICE_JSON"
+          echo "  \"display_type\": \"$DISPLAY_TYPE\"" >> "$DEVICE_JSON"
           echo "}" >> "$DEVICE_JSON"  # Add trailing }
-          echo "Added display_type: $WS_TYPE"
+          echo "Added display_type: $DISPLAY_TYPE"
+      fi
+
+      # For LCD mode, also set the resolution to 800x480
+      if [[ "$DISPLAY_TYPE" == "lcd" ]]; then
+          if grep -q '"resolution":' "$DEVICE_JSON"; then
+              sed -i 's/"resolution": \[.*\]/"resolution": [800, 480]/' "$DEVICE_JSON"
+          else
+              if grep -q '}$' "$DEVICE_JSON"; then
+                  sed -i '$s/}/,/' "$DEVICE_JSON"
+              fi
+              echo '  "resolution": [800, 480]' >> "$DEVICE_JSON"
+              echo "}" >> "$DEVICE_JSON"
+          fi
+          echo "Set resolution to 800x480 for LCD display"
       fi
   else
-      echo "Config not updated as WS_TYPE flag is not set"
+      echo "Config not updated as no display type flag is set"
   fi
 }
 
@@ -363,6 +449,10 @@ stop_service
 if [[ -n "$WS_TYPE" ]]; then
   fetch_waveshare_driver
 fi
+# Configure LCD display if -L flag is set
+if [[ -n "$LCD_MODE" ]]; then
+  configure_lcd_display
+fi
 enable_interfaces
 install_debian_dependencies
 # check OS version for Bookworm to setup zramswap
@@ -378,8 +468,8 @@ install_cli
 create_venv
 install_executable
 install_config
-# update the config file with additional WS if defined.
-if [[ -n "$WS_TYPE" ]]; then
+# update the config file with display type if defined.
+if [[ -n "$WS_TYPE" ]] || [[ -n "$LCD_MODE" ]]; then
   update_config
 fi
 install_app_service
