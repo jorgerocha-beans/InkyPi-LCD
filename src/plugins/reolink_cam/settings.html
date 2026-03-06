@@ -102,7 +102,7 @@
             document.getElementById('show_camera_name').checked = pluginSettings.show_camera_name !== false;
             document.getElementById('show_camera_name').value = pluginSettings.show_camera_name !== false;
 
-            const cameras = pluginSettings.cameras || [];
+            let cameras = pluginSettings.cameras || [];
             if (typeof cameras === 'string') {
                 try { cameras = JSON.parse(cameras); } catch(e) { cameras = []; }
             }

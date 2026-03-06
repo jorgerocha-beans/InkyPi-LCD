@@ -47,7 +47,14 @@ class Calendar(BasePlugin):
         current_dt = datetime.now(tz)
         start, end = self.get_view_range(view, current_dt, settings)
         logger.debug(f"Fetching events for {start} --> [{current_dt}] --> {end}")
+        logger.info("Calendar: fetching events from %d URL(s) for range %s to %s", len(calendar_urls), start, end)
+        for i, url in enumerate(calendar_urls):
+            logger.info("Calendar URL[%d]: %s", i, url)
         events = self.fetch_ics_events(calendar_urls, calendar_colors, tz, start, end)
+        logger.info("Calendar: fetched %d events total", len(events) if events else 0)
+        if events:
+            for ev in events[:5]:
+                logger.info("  Event: %s | %s", ev.get('title'), ev.get('start'))
         if not events:
             logger.warning("No events found for ics url")
 
@@ -64,10 +71,13 @@ class Calendar(BasePlugin):
             "font_scale": FONT_SIZES.get(settings.get("fontSize", "normal"))
         }
 
+        logger.info("Calendar: rendering HTML with view=%s, %d events, current_dt=%s", view, len(events) if events else 0, template_params.get('current_dt'))
         image = self.render_image(dimensions, "calendar.html", "calendar.css", template_params)
 
         if not image:
+            logger.error("Calendar: render_image returned None — Chromium screenshot failed")
             raise RuntimeError("Failed to take screenshot, please check logs.")
+        logger.info("Calendar: render complete, image size=%s", image.size if image else 'None')
         return image
     
     def fetch_ics_events(self, calendar_urls, colors, tz, start_range, end_range):
@@ -142,10 +152,15 @@ class Calendar(BasePlugin):
         if calendar_url.startswith("webcal://"):
             calendar_url = calendar_url.replace("webcal://", "https://")
         try:
+            logger.info("Fetching calendar from: %s", calendar_url)
             response = requests.get(calendar_url, timeout=30)
             response.raise_for_status()
-            return icalendar.Calendar.from_ical(response.text)
+            logger.info("Calendar fetch OK: %d bytes, content-type: %s", len(response.text), response.headers.get('Content-Type', 'unknown'))
+            cal = icalendar.Calendar.from_ical(response.text)
+            logger.info("Calendar parsed successfully")
+            return cal
         except Exception as e:
+            logger.error("Failed to fetch/parse calendar: %s", str(e))
             raise RuntimeError(f"Failed to fetch iCalendar url: {str(e)}")
 
     def get_contrast_color(self, color):

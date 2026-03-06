@@ -1,0 +1,50 @@
+{
+    "name": "InkyPi Development",
+    "display_type": "mock",
+    "resolution": [
+        800,
+        480
+    ],
+    "orientation": "horizontal",
+    "plugin_order": [
+        "calendar",
+        "ai_image",
+        "ai_text",
+        "clock",
+        "comic",
+        "countdown",
+        "github",
+        "image_album",
+        "image_folder",
+        "image_upload",
+        "apod",
+        "image_url",
+        "newspaper",
+        "rss",
+        "screenshot",
+        "todo_list",
+        "unsplash",
+        "weather",
+        "wpotd",
+        "year_progress",
+        "reolink_cam"
+    ],
+    "playlist_config": {
+        "playlists": [
+            {
+                "name": "Default",
+                "start_time": "00:00",
+                "end_time": "24:00",
+                "plugins": [],
+                "current_plugin_index": null
+            }
+        ],
+        "active_playlist": null
+    },
+    "refresh_info": {
+        "refresh_time": "2026-03-06T22:38:24.078252+00:00",
+        "image_hash": "8587b77c8006382c94468f5d677fed062e79b3a81d7e9dc858e07aecd3b6bfff",
+        "refresh_type": "Manual Update",
+        "plugin_id": "reolink_cam"
+    }
+}

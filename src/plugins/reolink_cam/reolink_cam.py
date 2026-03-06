@@ -8,13 +8,20 @@ Designed for Pi Zero 2 W (512MB RAM) — images are resized immediately after
 capture to minimize memory usage.
 """
 
+import json
 import logging
 import math
+import urllib.parse
 from datetime import datetime
 from io import BytesIO
 
 import pytz
 import requests
+import urllib3
+
+# Suppress InsecureRequestWarning — Reolink cameras use self-signed SSL certs,
+# so we must disable certificate verification for HTTPS connections.
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from PIL import Image, ImageColor, ImageDraw, ImageFont
 from plugins.base_plugin.base_plugin import BasePlugin
 from utils.app_utils import get_font
@@ -47,9 +54,25 @@ class ReolinkCamPlugin(BasePlugin):
             PIL.Image: The composited image ready for display.
         """
         cameras = settings.get("cameras", [])
+        logger.info("Reolink plugin settings keys: %s", list(settings.keys()))
+        logger.info("Raw cameras value (type=%s): %s", type(cameras).__name__, repr(cameras)[:200])
+        # cameras may arrive as a JSON string from the form — deserialize it
+        if isinstance(cameras, str):
+            try:
+                cameras = json.loads(cameras)
+                logger.info("Parsed cameras JSON: %d camera(s) found", len(cameras))
+            except (json.JSONDecodeError, TypeError):
+                logger.warning("Failed to parse cameras setting: %s", cameras)
+                cameras = []
+        logger.info("Final cameras count: %d", len(cameras))
         layout = settings.get("layout", "single")
         show_timestamp = settings.get("show_timestamp", True)
         show_camera_name = settings.get("show_camera_name", True)
+        # Form values may be strings "true"/"false" — normalize to bool
+        if isinstance(show_timestamp, str):
+            show_timestamp = show_timestamp.lower() == "true"
+        if isinstance(show_camera_name, str):
+            show_camera_name = show_camera_name.lower() == "true"
         overlay_position = settings.get("overlay_position", "bottom-left")
         bg_color = settings.get("background_color", "#000000")
 
@@ -106,9 +129,56 @@ class ReolinkCamPlugin(BasePlugin):
     # Snapshot capture
     # -------------------------------------------------------------------------
 
+    def _login_token(self, ip, username, password):
+        """
+        Authenticate via Reolink Login API and return a session token.
+
+        Returns:
+            str or None: The token string, or None on failure.
+        """
+        url = f"https://{ip}/cgi-bin/api.cgi?cmd=Login"
+        payload = [
+            {
+                "cmd": "Login",
+                "param": {
+                    "User": {
+                        "Version": "0",
+                        "userName": username,
+                        "password": password,
+                    }
+                },
+            }
+        ]
+        try:
+            resp = requests.post(
+                url, json=payload, timeout=REQUEST_TIMEOUT, verify=False
+            )
+            data = resp.json()
+            logger.info("Camera %s: Login response: %s", ip, json.dumps(data)[:500])
+            if isinstance(data, list) and len(data) > 0:
+                value = data[0].get("value", {})
+                token = value.get("Token", {}).get("name")
+                if token:
+                    logger.info("Camera %s: login successful, token obtained", ip)
+                    return token
+                # Check for error
+                error = data[0].get("error", {})
+                if error:
+                    logger.warning(
+                        "Camera %s: login error: %s (code %s)",
+                        ip, error.get("detail", "unknown"), error.get("rspCode", "?"),
+                    )
+            return None
+        except Exception as e:
+            logger.warning("Camera %s: login request failed: %s", ip, e)
+            return None
+
     def _capture_snapshot(self, cam_config):
         """
-        Capture a snapshot from a Reolink camera via HTTP API.
+        Capture a snapshot from a Reolink camera.
+
+        Tries token-based auth first (POST Login → GET Snap with token).
+        Falls back to direct query-param auth with URL-encoded password.
 
         Args:
             cam_config (dict): Camera config with ip, username, password, channel.
@@ -125,47 +195,74 @@ class ReolinkCamPlugin(BasePlugin):
             logger.warning("Camera IP not configured")
             return None
 
-        # Reolink HTTP API snapshot endpoint
-        url = f"http://{ip}/cgi-bin/api.cgi"
-        params = {
-            "cmd": "Snap",
-            "channel": channel,
-            "rs": "inkypi",
-            "user": username,
-            "password": password,
-        }
+        base_url = f"https://{ip}/cgi-bin/api.cgi"
 
+        # --- Method 1: Token-based auth ---
+        logger.info("Camera %s: attempting token-based login", ip)
+        token = self._login_token(ip, username, password)
+        if token:
+            snap_url = f"{base_url}?cmd=Snap&channel={channel}&rs=inkypi&token={token}"
+            img = self._fetch_snapshot(ip, snap_url)
+            if img:
+                return img
+            logger.warning("Camera %s: token auth succeeded but snap failed, trying direct auth", ip)
+
+        # --- Method 2: Direct query-param auth (URL-encode password) ---
+        logger.info("Camera %s: attempting direct auth with URL-encoded password", ip)
+        encoded_password = urllib.parse.quote(password, safe="")
+        encoded_username = urllib.parse.quote(username, safe="")
+        snap_url = (
+            f"{base_url}?cmd=Snap&channel={channel}&rs=inkypi"
+            f"&user={encoded_username}&password={encoded_password}"
+        )
+        img = self._fetch_snapshot(ip, snap_url)
+        if img:
+            return img
+
+        logger.warning("Camera %s: all authentication methods failed", ip)
+        return None
+
+    def _fetch_snapshot(self, ip, url):
+        """
+        Fetch a snapshot image from the given URL.
+
+        Returns:
+            PIL.Image or None
+        """
         try:
             response = requests.get(
                 url,
-                params=params,
                 timeout=REQUEST_TIMEOUT,
                 stream=True,
+                verify=False,
             )
             response.raise_for_status()
 
-            # Check content type — should be image
             content_type = response.headers.get("Content-Type", "")
             if "image" not in content_type and "octet-stream" not in content_type:
-                # Might be a JSON error response
                 logger.warning(
-                    "Camera %s returned non-image content: %s",
-                    ip,
-                    content_type,
+                    "Camera %s returned non-image content: %s", ip, content_type
                 )
                 try:
                     error_data = response.json()
-                    logger.warning("Camera API error: %s", error_data)
+                    logger.warning(
+                        "Camera %s API error response: %s",
+                        ip, json.dumps(error_data)[:500],
+                    )
                 except Exception:
-                    pass
+                    logger.warning(
+                        "Camera %s raw response: %s", ip, response.text[:500]
+                    )
                 return None
 
-            # Read image data and immediately resize to save RAM
             image_data = BytesIO(response.content)
             img = Image.open(image_data)
             img = self._constrain_size(img, MAX_SNAPSHOT_DIM)
-            # Force load into memory so we can close the BytesIO
             img.load()
+            logger.info(
+                "Camera %s: snapshot captured successfully (%dx%d)",
+                ip, img.width, img.height,
+            )
             return img
 
         except requests.exceptions.ConnectionError:
@@ -174,10 +271,7 @@ class ReolinkCamPlugin(BasePlugin):
             logger.warning("Camera %s: request timed out after %ds", ip, REQUEST_TIMEOUT)
         except requests.exceptions.HTTPError as e:
             status = e.response.status_code if e.response else "unknown"
-            if status == 401:
-                logger.warning("Camera %s: authentication failed (401)", ip)
-            else:
-                logger.warning("Camera %s: HTTP error %s", ip, status)
+            logger.warning("Camera %s: HTTP error %s", ip, status)
         except Exception as e:
             logger.warning("Camera %s: unexpected error: %s", ip, e)
 

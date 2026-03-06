@@ -193,9 +193,12 @@ def update_plugin_instance(instance_name):
         plugin_settings.update(handle_request_files(request.files, request.form))
 
         if plugin_settings:  # Only update if there are actual plugin settings
+            logger.info("Saving plugin settings for %s/%s: %s", plugin_id, instance_name, 
+                        {k: (v[:80] + '...' if isinstance(v, str) and len(v) > 80 else v) for k, v in plugin_settings.items()})
             plugin_instance.settings = plugin_settings
 
         device_config.write_config()
+        logger.info("Config written to disk for plugin %s/%s", plugin_id, instance_name)
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
     return jsonify({"success": True, "message": f"Updated plugin instance {instance_name}."})
