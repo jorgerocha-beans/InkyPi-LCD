@@ -35,16 +35,81 @@
                 "name": "Default",
                 "start_time": "00:00",
                 "end_time": "24:00",
-                "plugins": [],
-                "current_plugin_index": null
+                "plugins": [
+                    {
+                        "plugin_id": "reolink_cam",
+                        "name": "Camera",
+                        "plugin_settings": {
+                            "layout": "grid_2x1",
+                            "show_timestamp": "true",
+                            "show_camera_name": "true",
+                            "overlay_position": "bottom-left",
+                            "background_color": "#000000",
+                            "cameras": "[{\"name\":\"Garage\",\"ip\":\"10.0.0.14\",\"username\":\"admin\",\"password\":\"@Edu_59410814\",\"channel\":0},{\"name\":\"Front Door\",\"ip\":\"10.0.0.150\",\"username\":\"admin\",\"password\":\"@Edu_59410814\",\"channel\":0}]"
+                        },
+                        "refresh": {
+                            "interval": 60
+                        },
+                        "latest_refresh_time": "2026-03-07T17:43:18.722803-07:00"
+                    },
+                    {
+                        "plugin_id": "calendar",
+                        "name": "Calendar",
+                        "plugin_settings": {
+                            "calendarColors[]": [
+                                "#007bff"
+                            ],
+                            "calendarURLs[]": [
+                                "https://calendar.google.com/calendar/ical/jorgeelrocha.10%40gmail.com/private-a70ff3cf699a762284d14d7108535384/basic.ics"
+                            ],
+                            "viewMode": "timeGridWeek",
+                            "language": "en",
+                            "displayTitle": "true",
+                            "displayWeekends": "true",
+                            "displayNowIndicator": "true",
+                            "nowIndicatorColor": "#ff0000",
+                            "displayPreviousDays": "true",
+                            "weekStartDay": "0",
+                            "startTimeInterval": "",
+                            "endTimeInterval": "",
+                            "fontSize": "smaller",
+                            "selectedFrame": "None",
+                            "topMargin": "",
+                            "bottomMargin": "",
+                            "leftMargin": "",
+                            "rightMargin": "",
+                            "backgroundOption": "color",
+                            "backgroundColor": "#ffffff",
+                            "textColor": "#000000"
+                        },
+                        "refresh": {
+                            "interval": 1800
+                        },
+                        "latest_refresh_time": "2026-03-07T17:23:46.957800-07:00"
+                    }
+                ],
+                "current_plugin_index": 0
             }
         ],
-        "active_playlist": null
+        "active_playlist": "Default"
     },
     "refresh_info": {
-        "refresh_time": "2026-03-06T22:49:03.532379+00:00",
-        "image_hash": "ea9c2c3909dd7663fcd3cbbe5776afc567f3006361e42a7cbdcbe62e12035d97",
-        "refresh_type": "Manual Update",
-        "plugin_id": "reolink_cam"
+        "refresh_time": "2026-03-07T17:43:18.722803-07:00",
+        "image_hash": "042d2c6daee66ce6d393c37005f6b0c3eeb863a131fa147bb73d24b35298bc6d",
+        "refresh_type": "Playlist",
+        "plugin_id": "reolink_cam",
+        "playlist": "Default",
+        "plugin_instance": "Camera"
+    },
+    "inverted_image": null,
+    "log_system_stats": null,
+    "timezone": "America/Denver",
+    "time_format": "12h",
+    "plugin_cycle_interval_seconds": 60,
+    "image_settings": {
+        "saturation": 1.0,
+        "brightness": 1.0,
+        "sharpness": 1.0,
+        "contrast": 1.0
     }
 }
